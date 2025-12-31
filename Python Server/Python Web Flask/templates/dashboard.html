@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Room Monitor</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #1e1e1e; color: #fff; margin: 20px; }
+        h1 { text-align: center; color: #00d4ff; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background-color: #2d2d2d; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        th, td { padding: 12px; text-align: center; border-bottom: 1px solid #444; }
+        th { background-color: #333; color: #00d4ff; font-weight: bold; }
+        tr:hover { background-color: #3a3a3a; }
+
+        /* Kelas warna untuk status suhu */
+        .normal { color: #4caf50; font-weight: bold; } /* Hijau */
+        .warning { color: #ff9800; font-weight: bold; } /* Orange */
+        .danger { color: #f44336; font-weight: bold; }  /* Merah */
+
+        .loading { text-align: center; color: #888; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <h1>🖥️ System Monitoring Dashboard</h1>
+
+    <table id="monitorTable">
+        <thead>
+            <tr>
+                <th>Nama Komputer</th>
+                <th>CPU Usage</th>
+                <th>CPU Temp</th>
+                <th>GPU Temp</th>
+                <th>Network (NIC)</th>
+                <th>Memory</th>
+                <th>Last Update</th>
+            </tr>
+        </thead>
+        <tbody>
+            </tbody>
+    </table>
+    <div id="loading" class="loading">Menunggu data...</div>
+
+    <script>
+        // Fungsi untuk mengambil data dari Python setiap 1 detik
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/data');
+                const data = await response.json();
+                updateTable(data);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        function updateTable(data) {
+            const tbody = document.querySelector('#monitorTable tbody');
+            const loading = document.getElementById('loading');
+            
+            if(data.length > 0) loading.style.display = 'none';
+
+            // --- BAGIAN UPDATE SORTING (PRIORITAS NAMA DULU, BARU ANGKA) ---
+            data.sort((a, b) => {
+                // 1. Pecah dulu teksnya
+                // Contoh: "reguler-10" -> parts[0]="reguler", parts[1]="10"
+                const partsA = a.MachineName.split('-');
+                const partsB = b.MachineName.split('-');
+
+                const namaA = partsA[0].toLowerCase(); // "reguler" / "vip"
+                const namaB = partsB[0].toLowerCase();
+                
+                const angkaA = parseInt(partsA[1]) || 0; // 10
+                const angkaB = parseInt(partsB[1]) || 0;
+
+                // 2. Bandingkan NAMANYA dulu
+                if (namaA !== namaB) {
+                    // localeCompare membandingkan string (r < v), jadi reguler muncul dulu
+                    return namaA.localeCompare(namaB); 
+                }
+
+                // 3. Kalau Namanya SAMA, baru bandingkan ANGKA-nya
+                return angkaA - angkaB;
+            });
+            // -------------------------------------------------------------
+            
+            tbody.innerHTML = ''; // Kosongkan tabel sebelum isi ulang
+
+            data.forEach(pc => {
+                // Logika pewarnaan Suhu
+                let cpuClass = pc.CpuTemp > 80 ? 'danger' : (pc.CpuTemp > 60 ? 'warning' : 'normal');
+                let gpuClass = pc.GpuTemp > 80 ? 'danger' : (pc.GpuTemp > 60 ? 'warning' : 'normal');
+
+                const row = `
+                    <tr>
+                        <td style="font-weight:bold; color:white;">${pc.MachineName}</td>
+                        <td>
+                            <div style="background:#444; width:100%; height:10px; border-radius:5px;">
+                                <div style="background:#00d4ff; width:${pc.CpuUsage}%; height:100%; border-radius:5px;"></div>
+                            </div>
+                            ${pc.CpuUsage.toFixed(1)}%
+                        </td>
+                        <td class="${cpuClass}">${pc.CpuTemp}°C</td>
+                        <td class="${gpuClass}">${pc.GpuTemp}°C</td>
+                        <td>${pc.NicSpeed}</td>
+                        <td>${pc.TotalRam}</td>
+                        <td style="font-size:0.8em; color:#aaa;">${pc.ServerTime}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+
+        // Jalankan setiap 1 detik (1000 ms)
+        setInterval(fetchData, 1000);
+        fetchData(); // Jalankan langsung saat load pertama
+    </script>
+
+</body>
+</html>
